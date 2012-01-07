@@ -1,0 +1,14 @@
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+auto-save-list
+tramp
+.\#*
+
+dist
+cabal-dev
+*.o
+*.hi
+*.chi
+*.chs.h
