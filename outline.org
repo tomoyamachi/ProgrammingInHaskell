@@ -351,3 +351,396 @@
 *** 5 一般化し単純にする
       利用されていない変数を「_」に変更
       重複を消去すると、6_3のようになる
+
+* 第7章 高階関数
+** 7_1 基本概念
+    引数として関数を取る関数
+    たとえば関数を2回適用した結果を返す関数twiceは以下。
+        twice :: (a -> a) -> a -> a
+        twice f x = f $ f x
+    * 返り値として関数を返すことはカリー化。
+
+** 7_2 リスト処理
+    標準ライブラリにあるリスト処理のための高階関数について
+    特徴
+        1 多くのものは任意の型のリストに適用可能。
+        2 入れ子になったリストを処理するときは、mapの引数に関数を指定すればいい
+
+*** map 引数として与えられた関数をリスト内の要素すべてに適用する。
+        > map (+1) [1,3,5,6]
+        [2,4,6,7]
+
+*** filter リストの中から述語(真理値を返す関数)を満たす要素を取りだす。
+        > filter ( /= ' ') "haskell is fun"
+        "haskellisfun"
+
+*** all 要素すべてが述語を満たすか
+        > all even [2,4,6]
+            True
+
+*** any 要素のどれかが述語を満たすか
+        > any even [1,3,5]
+        False
+
+*** takeWhile 述語を満たす連続した要素を取り出す
+        > takeWhile (<= 10) [4,5,12,6,9,11,23]
+        [4,5]
+
+*** dropWhile 述語を満たす連続した要素を取り除く
+        > dropWhile (<= 10) [4,5,12,6,9,11,23]
+        [12,6,9,11,23]
+
+** 7_3 畳込関数foldr
+    関数sumを再帰をつかって定義すると以下のようになる
+        sum [] = 0
+        sum (x:xs) = x + sum xs
+    これをfoldr(fold right)をつかうと、以下のように書ける。
+        sum = foldr (+) 0
+    明示的に書くと、
+        sum xs = foldr (+) 0 xs
+
+    foldrの定義は、
+        foldr :: (a -> b -> b) -> b -> [a] -> b
+        foldr f v [] = v
+        foldr f v (x:xs) = f x $ foldr f v xs
+        -- fは関数。vは、空リストだったときの値。
+
+    しかし、単にcons演算子を関数fに置き換え、末尾の空リストを値vに置き換えると理解するほうがよい。なぜなら、foldrの関数名と関連づけやすいから(?)
+        sum [1,2,3] だと、
+        (1:(2:(3:[])))なので、
+        1+(2+(3+0)。
+    このように、右結合であるので「fold right(右から畳み込む)」という名前になっている。
+
+** 7_3 畳込関数foldl
+    左結合で定義するときは「foldl(fold left)を使う
+    左結合の例
+        suml = sum' 0
+               where
+                 sum' v [] = v
+                 sum' v (x:xs) = sum' (v+x) xs
+    これを実行すると
+        > suml [1,2,3]は((0 + 1) + 2) + 3
+
+    つまり
+        f v [] = v
+        f v (x:xs) = f (v @ x) xs
+    のような場合、foldl関数を使うことができる。
+
+    foldlの定義は、
+        foldl :: (a -> b -> b) -> b -> [a] -> b
+        foldl f v [] = v
+        foldl f v (x:xs) = foldl f (f v x) xs
+        -- fは関数。vは、空リストだったときの値。
+
+** 7_5 関数合成演算子
+    高階演算子「.」は、二つの関数を合成した関数を返す。
+        (.) :: (b->c) -> (a->b) -> (a->c)
+        f.g = \x -> f (g x)
+        -- これは「(f.g) x = f (g x)」と定義してもよい。
+
+    「.」をつかうことで、式を短くすることができる。それは、括弧を減らせ、引数を省略できるから。
+    結合法則により結合順位は結果に影響を与えないので,f.(g.h) も,(f.g).hも等しい.結果、括弧を減らすことができる。
+
+        twice f x = f $ f x
+　　は
+        twice f = f.f
+    になる。
+
+
+*** 関数の単位元について。
+        単位元とは,ある集合の中の要素aに対し,演算子@を適用する場合
+            a@e == e@a == a
+        となるようなeのこと.(+)の場合はeが0,(*)の場合はeが1となる.
+
+****    関数の単位元は,恒等関数id.引数を変えることなく返す.
+            id :: a -> a
+            id = \x -> x
+            -- id x = xでも可
+
+****    引数の関数リストに対し、要素である関数すべてを合成する関数composeは以下のように定義できる。
+            compose :: [a -> a] -> (a -> a)
+            compose = foldr (.) id
+
+** 7_6 文字列の変換器
+
+* 第8章 関数型パーサ
+** 8.1 パーサ
+    文字列を取り,文字列の文法構造を表現する曖昧さのない構文木を返すプログラム
+    "2 * 3 + 4"という文字列は,数式のパーサにより以下のような構文木をつくる.
+        + ┬ 4
+          └ * ┬ 3
+               └ 2
+        数値が葉,演算子が節の部分にある.
+    ほとんどのプログラムはパーサを使う.入力の構造を明確にしておくことで,処理が簡単になる.
+
+** 8.2 パーサの型
+    パーサは文字列を扱うため,引数はString.またパースできなかった部分の文字列を返す部分と,失敗したことを示す部分をつけると,
+        type Parser a = String -> [(a,String)]
+    となる.
+
+** 8.3  基本的なパーサ
+
+***  解析が必ず成功する、入力文字列を消費しないパーサを作る
+     return :: a -> Parser a
+     return v = \inp -> [(v,inp)]
+
+***  解析が必ず失敗するパーサを作る
+     failure :: Parser a
+     failure = \inp -> []
+
+***  item ::Parser Char
+     item = \inp -> case inp of
+                 [] -> []
+                 (x:xs) -> [(x,xs)]
+
+** 8.4 連結
+** 8.5 選択
+    ふたつのパーサを組み合わせる方法を3つ。
+
+*** 1.一方をパースしたあと,他方を適用
+
+*** 2.連結演算子「>>=(そして)」を用いて,結果を処理する
+        p >>= f = \inp -> case parse p inp of
+                          [] -> []
+                          [(v,out)] -> parse (f v) out
+        -- 一番目のパーサpを適用し,
+        -- 失敗すれば,全体も失敗する
+        -- 成功すれば,一番目のパーサの結果に,関数fを適用.二番目のパーサを生成
+     これはhttp://0465.at.webry.info/201009/article_5.htmlなので
+        p1 >>= \v1 ->
+        p2 >>= \v2 ->
+        ...
+        pn >>= \vn ->
+        return (f v1 v2 ... vn)
+        -- v1は,パーサp1の結果.
+      となる.
+
+      このようなパーサは,生成器(<-)を用いて
+        do v1 <- p1
+           v2 <- p2
+           ...
+           vn <- pn
+           return (f v1 v2 ... vn)
+      と書くこともでき,こちらの方が簡潔.
+
+*** 3.パーサの選択演算子を定義
+        1番目のパーサが失敗したら、2番目のパーサを適用する
+        (+++) :: Parser a -> Parser a -> Parser a
+        p +++ q = \inp -> case parse p inp of
+                           [] -> parse q inp
+                           [(v,out)] -> [(v,out)]
+
+
+** 8.6 パーサの部品
+    8.3 〜 8.5 までのコードを使うと,パーサの部品をたくさん作れる
+
+** 8.7 空白の扱い
+    実用的なパーサは,入力文字列中の「トークン」の前後に空白があることを許容する
+        space :: Parser ()
+        space = do many (sat isSpace)
+                   return ()
+
+        token :: Parser a -> Parser a
+        token p = do space
+                     v <- p
+                     space
+                     return v
+
+** 8.8 数式
+    数式の文法をつくっていく
+    exprはexpression(式).termは項.factorは因数(積の要素).natは自然数.
+
+        expr ::= expr '+' expr | expr '*' expr | '(' expr ')' | nat
+        nat :: = '0' | '1' | '2' |...
+
+    これだと,演算子や「()」の結合順位が表現できていないので
+        expr :: = expr '+' expr | term
+        term :: = factor '*' term | factor
+        factor ::= '(' expr ')' | nat
+        nat :: = '0' | '1' | '2' |...
+
+    もっと簡潔
+
+    以上をパーサに変換していく.
+        symbol :: String -> Parser String
+        symbol xs = token (string xs)
+
+        expr :: Parser Int
+        expr = do t <- term
+                  do symbol "+"
+                     e <- expr
+                     return (t + e)
+                   +++ return t
+
+        term :: Parser Int
+        term = do f <- factor
+                  do symbol "*"
+                     t <- term
+                     return (f * t)
+                   +++ return f
+
+        factor :: Parser Int
+        factor = do symbol "("
+                    e <- expr
+                    symbol ")"
+                    return e
+                  +++ natural
+
+* 第9章 対話プログラム
+
+** 9.1 対話
+    対話プログラム ー ユーザから付加的な入力を取り,ユーザへ付加的な出力を生成する
+      (対義語)バッチプログラム ー この章までで書いたhaskellのプログラムたち
+
+    対話プログラムの場合,実行中に入出力をともなうので副作用を起こす.
+    対話プログラムを純粋な関数(定数しかもたない状態)にモデル化することは可能か??
+
+** 9.2 入出力の型
+    haskellでは,対話プログラムを
+    「引数に"ある状態の世界"を取り"別の状態の世界"を返す純粋な関数」とみなす.
+    "別の状態の世界"とは,入出力によって起きた副作用を反映した結果.
+
+    対話プログラムの型「IO」を,"世界の現在の状態"を表す型「World」で表現すると,
+        type IO = World -> World
+    結果を返すことを考えると
+        type IO a = World -> (a,World)
+    となる.
+    このとき「IO a」をアクションとよぶ.
+
+    IO ()の場合, 結果に意味がないことを示すユニットである()を返すアクションとなる.
+
+** 9.3 基本アクション
+    getChar
+    putChar
+    return
+    の3つ.
+
+* 第10章 型とクラスの定義
+
+型宣言をする方法はtypeを使う方法と、dataを使う方法がある。
+** 10.1 typeによる型宣言
+     既存の型に別名をつける方法。
+
+     たとえばStringの定義は、以下のように書ける。
+        type String = [Char]
+     複数の型変数もつかえる。
+        type Assoc k v = [(k,v)]
+
+     再帰的にはできない。
+
+** 10.2 dataによる型宣言
+     完全に新しい型をつくる方法。再帰もつくれる(次のチャプター)。
+
+     たとえばBoolの定義は、以下のように書ける。
+        data Bool = True | False
+
+     型のために新しく定義された値を、構成子と呼ぶ。構成子も大文字ではじまる。
+     構成子が引数をとることもある。よって、構成子は関数。
+        data Shape = Circle Float | Rect Float Float
+     型Shapeは、Circle r または Rect x yという形の値をもつという意味。
+        *Main> :t Rect
+        Rect :: Float -> Float -> Shape
+        -- 関数っぽいよね
+
+     変数も利用できる。
+        data Maybe a = Nothing | Just a
+        -- Just aじゃなくて、aじゃだめなの?
+     おおむね型aの値となるけど、もしかしたらのときに失敗したらNothingを返す。
+
+** 10.3 再帰型
+     dataで型宣言すると、再帰的にできる。
+        data Nat = Zero | Succ Nat
+
+     二分木の定義は
+        data Tree = Leaf Int | Node Tree Int Tree
+
+        t :: Tree
+        t = Node (Node (Leaf 1) 3 (Leaf 4)) 5 (Node (Leaf 6) 7 (Leaf 9))
+     とあらわすことができる。
+
+** 10.4 恒真式検査
+     恒真式とは、常に真となる命題。
+     真理値、変数、否定、論理積、論理包含(前件が真、後件が偽のときのみ偽となる)で表す言語を考える。
+        data Prop = Const Bool | Var Char | Not Prop | And Prop Prop | Imply Prop Prop
+
+** 10.6 クラスとインスタンスの宣言
+     新しいクラスはclassで宣言できる。
+        class Eq  a where
+          (==),(/=) :: a -> a -> Bool
+          x /= y = not (x == y)
+
+     .インスタンスの自動導出
+        新しく宣言した型は、いくつかの組み込みクラスのインスタンスにするのが適切。
+        「deriving」をつかうと、型を自動的に Eq, Ord, Show, Readのインスタンスにできる。
+        たとえば Bool型の定義は以下。
+
+            data Bool = False | True
+                        deriving (Eq, Ord, Show, Read)
+
+     .モナド型
+        モナドの概念は以下。8,9章で実装したように、return と >>= を実装して型変数をとる型m。
+            class Monad m where
+              return ::a -> m a
+              (>>=) :: m a -> (a -> m b) -> m b
+*** インスタンスとは「型クラスの制約を満たすよう定義した型」
+     http://www.qualysite.co.jp/tech-blog/?p=3541
+     だから、ある型aがクラスEqのインスタンスになるには、型aに同等と不等のメソッドを実装しなければならない。(いまは「/=」はデフォルトで定義されているから、同等だけでいい)
+        instance Eq Bool where
+          False == False = True
+          True == True = True
+          _ == _ = False
+
+* 第11章 切符番号遊び
+** この章のプログラムを動かすには
+注. この章のプログラムを実際に動かすと、
+    No instance for (Show Expr)
+      arising from a use of `print'
+    Possible fix: add an instance declaration for (Show Expr)
+    In a stmt of an interactive GHCi command: print it
+というエラーが出る。Exprをどう表示するか指定してないためのエラー。
+
+ExprをString型に変換するために、Showクラスのshowメソッドをつかう。
+まずはOpをShowクラスのインスタンスにして、showに定義を追加。
+  instance Show Op where
+    show Add                   =  "+"
+    show Sub                   =  "-"
+    show Mul                   =  "*"
+    show Div                   =  "/"
+
+Opの定義を使って、ExprもShowクラスのインスタンスに。
+instance Show Expr where
+   show (Val n)               =  show n
+   show (App o l r)           =  bracket l ++ show o ++ bracket r
+                                 where
+                                    bracket (Val n) = show n
+                                    bracket e       = "(" ++ show e ++ ")"
+これで動くようになる。
+
+OpをShowクラスのインスタンスにせず、Exprだけでなんとかすると以下のようになる。このばあい、()が一つ深くなる。
+instance Show Expr where
+  show (Val n)       = show n
+  show (App Add x y) = "(" ++ show x ++ " + " ++ show y ++ ")"
+  show (App Sub x y) = "(" ++ show x ++ " - " ++ show y ++ ")"
+  show (App Mul x y) = "(" ++ show x ++ " * " ++ show y ++ ")"
+  show (App Div x y) = "(" ++ show x ++ " / " ++ show y ++ ")"
+
+** 11.1 導入
+     与えられた[Num]から、目標の数を得るにはどのような式があるのかを調べる
+     目標とする動作例
+        > solutions [1,3,7,10,25,50] 765
+        [3*((7*(50-10))-25),(25-10)*(1+50),(25-(3+7))*(1+50)....]
+** 11.2 問題の形式化
+
+** 11.3 総当たり方
+     すべての式を生成する方法。
+     リスト内の数字すべての順列組み合わせをつくり、それぞれの組み合わせ毎に可能な演算すべてをしていく方法。
+     重い。
+
+** 11.4 生成と評価の方法を変える
+     11.3で生成された式で、評価に成功するのは14%。(商が整数にならないetc)
+     有効な式だけを評価すれば、もっと速くなる。
+
+** 11.5 代数的な性質をいかす
+     交換法則、単位元の性質を利用すると、さらに不要な式を排除できる。
+     これは演算子の適用条件を変更することで可能となる。
+
