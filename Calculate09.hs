@@ -108,3 +108,9 @@ run                           :: IO ()
 run                           =  do cls
                                     showbox
                                     clear
+test = do
+  goto (3,4)
+  putStr "test"
+  goto (10,11)
+  putStr "test2"
+  return ()
